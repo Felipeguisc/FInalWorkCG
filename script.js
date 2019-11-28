@@ -1,7 +1,9 @@
 //Declaracao de variaveis
-var scene,camera,render,canvas,controls,ambientLight,lightPoint,background,linha,x=0;
+var scene,camera,render,canvas,controls,ambientLight,lightPoint,background;
+var linha, x=0, spaceShipSpeed = 1;
+var meshWireframe;
 //var cockpit = new Cockpit('cockpit/cockpit5.png');
-var backgroundTexture = new THREE.TextureLoader().load( 'textures/8k_stars.jpg', THREE.SphericalRefractionMapping );
+//var backgroundTexture = new THREE.TextureLoader().load( 'textures/8k_stars.jpg', THREE.SphericalRefractionMapping );
 //variaveis cubo
 var cubeGeometry,cubeMaterial,cube;
 //variaveis terra
@@ -13,8 +15,15 @@ var sunGeometry,sunMaterial,sun;
 var jupiterGeometry, jupiterMaterial, jupiter;
 //variaveis saturno
 var saturnGeometry, saturnMaterial, saturn, saturnRingGeometry1, saturnRingMaterial1, saturnRing1, saturnRingGeometry2, saturnRingMaterial2, saturnRing2;
-var saturnX = 0,saturnY = 10,saturnZ = 600;
+var saturnX = 0,saturnY = 10,saturnZ = 1600;
 var AXIS = new THREE.Vector3( 0.25, 1, 0 ).normalize();
+
+// Variaveis para curva
+var p = 0;
+var ang = 0;
+var xreal = 0;
+var yreal = 0;
+var pa, pa1;
 
 //Controls xSaucecode
 var keyboard = {};
@@ -24,6 +33,7 @@ var loaderObj = new THREE.OBJLoader();
 var mtlLoader = new THREE.MTLLoader();
 var loader = new THREE.GLTFLoader();
 var loaderBox;
+var loadingManager = null;
 
 //Imports
 // 0 -> x-wing
@@ -32,62 +42,21 @@ var loaderBox;
 // 3 -> Millennium Falcon
 var mesh = [];
 var meshCockpit, meshDeathStar;
-var p = 0;
-var ang = 0;
-var xreal = 0;
-var yreal = 0;
-var pa, pa1;
 
-mtlLoader.load("cockpit/newcockpit/vrcockpit.mtl", function(materials){
-	materials.preload();
-				
-	loaderObj.setMaterials(materials);
+// Models Obj index
+var models = {
+	cockpit: {
+		obj:"cockpit/CockpitPro/vrcockpit.obj",
+		mtl:"cockpit/CockpitPro/vrcockpit.mtl",
+		mesh: null,
+		castShadow:false
+	}
+};
 
-	loaderObj.load('cockpit/newcockpit/vrcockpit.obj',
-		function ( object ) {
-			meshCockpit = object;
-			meshCockpit.receiveShadow = true;
-			meshCockpit.castShadow = true;
-			meshCockpit.position.set(0,0,0);
-			meshCockpit.scale.setScalar(0.001,0.001,0.001);
-			scene.add( meshCockpit );
-			console.log("Cockpit");
-		},
-		function ( xhr ) {
-			console.log( ( xhr.loaded / xhr.total * 100 ) + '% loaded' );
-		},
-		function ( error ) {
-			console.log( 'An error happened' );
-		}
-	);
-});
+// Meshes index
+var meshes = {};
 
-/*
-mtlLoader.load("3DModels/death-star-ii/death-star-II-v2.mtl", function(materials){
-	materials.preload();
-	console.log("Estrela da morte");
-				
-	loaderObj.setMaterials(materials);
-
-	loaderObj.load('3DModels/death-star-ii/death-star-II-v2.obj',
-		function ( object ) {
-			meshDeathStar = object;
-			meshDeathStar.receiveShadow = true;
-			meshDeathStar.castShadow = true;
-			meshDeathStar.position.set(20,0,0);
-			meshDeathStar.scale.setScalar(0.0001,0.0001,0.0001);
-			scene.add( meshDeathStar );
-			console.log("Estrela da morte");
-		},
-		function ( xhr ) {
-			console.log( ( xhr.loaded / xhr.total * 100 ) + '% loaded' );
-		},
-		function ( error ) {
-			console.log( 'An error happened' );
-		}
-	);
-});*/
-
+// Carregamento dos modelos 3D no formato GLTF
 loadResourceGltf('3DModels/x-wing/scene.gltf',0, function() {
   loadResourceGltf('3DModels/star_destroyer/scene.gltf',1, function() {
     loadResourceGltf('3DModels/death_star_star_wars/scene.gltf',2, function() {
@@ -112,9 +81,10 @@ loadResourceGltf('3DModels/x-wing/scene.gltf',0, function() {
 
 //inicializacao das funcoes
 init(function(){
-	animate();
+	window.addEventListener('keydown', keyDown);
+	window.addEventListener('keyup', keyUp);
+	//animate();
 });
-
 
 //funcao init
 function init(callback){
@@ -138,7 +108,8 @@ function init(callback){
 	info.style.position = 'absolute';
 	info.style.top = '70%';
 	info.style.width = '100%';
-	info.style.textAlign = 'center';
+	info.style.left = '40%';
+	//info.style.textAlign = 'left';
 	info.style.color = '#57f542';
 	info.style.fontWeight = 'bold';
 	info.style.backgroundColor = 'transparent';
@@ -155,21 +126,33 @@ function init(callback){
 	// scene
 	scene = new THREE.Scene();
 	scene.add( new THREE.AxesHelper( 50 ) );
-	var grid = new THREE.GridHelper(2000, 100, 0x666666, 0x444444)
-	grid.rotateY(Math.PI/2);
+	//var grid = new THREE.GridHelper(2000, 100, 0x666666, 0x444444)
+	//grid.rotateY(Math.PI/2);
 	//scene.add(grid);
 
+	// Loading Manager
+	loadingManager = new THREE.LoadingManager();
+	loadingManager.onProgress = function(item, loaded, total){
+		console.log(item, loaded, total);
+	};
+	loadingManager.onLoad = function(){
+		console.log("loaded all resources");
+		onResourcesLoaded();
+	};
+
 	// camera
-	camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.001, 1000);
+	camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.001, 3000);
 
 	//canvas
 	canvas = render.domElement;
 	document.body.appendChild(canvas);
 
 	// controls
-	//controls = new THREE.OrbitControls( camera );
 	controls = new THREE.FlyControls( camera );
 	controls.rollSpeed = 0.1;
+	controls.movementSpeed = 0;
+	controls.dragToLook = true;
+	
 	// axes
 
 	// parent
@@ -196,56 +179,98 @@ function init(callback){
 	loadJupiter();
 
 	// Background
-	/*
-	background = new THREE.Mesh(
-	  new THREE.SphereGeometry(1000, 64, 64), 
-	  new THREE.MeshBasicMaterial({
-	    map: backgroundTexture, 
-	    side: THREE.BackSide,
-	  })
-	);
-	scene.add(background);*/
-
 	loaderBox = new THREE.CubeTextureLoader();
   	let textureBack = loaderBox.load([
-    'textures/background/purplenebula_ft.png',
-    'textures/background/purplenebula_bk.png',
-    'textures/background/purplenebula_up.png',
-    'textures/background/purplenebula_dn.png',
-    'textures/background/purplenebula_rt.png',
-    'textures/background/purplenebula_lf.png'
+    'textures/background/ame_starfield/starfield_ft.png',
+    'textures/background/ame_starfield/starfield_bk.png',
+    'textures/background/ame_starfield/starfield_up.png',
+    'textures/background/ame_starfield/starfield_dn.png',
+    'textures/background/ame_starfield/starfield_rt.png',
+    'textures/background/ame_starfield/starfield_lf.png'
  	 ]);
   	scene.background = textureBack;
+
+	// Load models
+	// REMEMBER: Loading in Javascript is asynchronous, so you need
+	// to wrap the code in a function and pass it the index. If you
+	// don't, then the index '_key' can change while the model is being
+	// downloaded, and so the wrong model will be matched with the wrong
+	// index key.
+	for( var _key in models ){
+		(function(key){
+			
+			var mtlLoader = new THREE.MTLLoader(loadingManager);
+			mtlLoader.load(models[key].mtl, function(materials){
+				materials.preload();
+				
+				var objLoader = new THREE.OBJLoader(loadingManager);
+				
+				objLoader.setMaterials(materials);
+				objLoader.load(models[key].obj, function(mesh){
+					
+					mesh.traverse(function(node){
+						if( node instanceof THREE.Mesh ){
+							if('castShadow' in models[key])
+								node.castShadow = models[key].castShadow;
+							else
+								node.castShadow = true;
+							
+							if('receiveShadow' in models[key])
+								node.receiveShadow = models[key].receiveShadow;
+							else
+								node.receiveShadow = true;
+						}
+					});
+					models[key].mesh = mesh;
+					
+				});
+			});
+			
+		})(_key);
+	}
 
 	parent.add( earth );
 	parent.add( clouds );
 	earth.add( moon );
 	earth.add( pivot );
 	pivot.add( moon );
-	
 
 	parentSaturn.add( saturn );
 	parentSaturn.add( saturnRing1 );
-	parentSaturn.add( saturnRing2 );
-
-	// mesh
-
-
-	// axes
-
+	//parentSaturn.add( saturnRing2 );
 
 	//Luz ambiente com média intensidade
-	ambientLight = new THREE.AmbientLight(0x999999);
+	ambientLight = new THREE.AmbientLight(0x333333);
 	scene.add(ambientLight);
+
 	//Adicionamos um ponto de luz
 	lightPoint = new THREE.PointLight(0x777777);
 	lightPoint.position.set(0,0,0);
-	lightPoint.intensity = 3;
 	lightPoint.castShadow = true;
+	lightPoint.intensity = 2;
 	lightPoint.decay = 2;
+	lightPoint.distance = 0;
 	scene.add(lightPoint);
 
 	camera.position.z = 30;
+
+	//teste 0.01
+	meshWireframe = new THREE.Mesh(
+		new THREE.SphereGeometry(0.00015,10,10),
+		new THREE.MeshBasicMaterial({color:0x42b6f5, wireframe:true, transparent:true, opacity: 0.2})
+	);
+	// meshWireframe.position.z -= 0.15; // Move the mesh
+	// meshWireframe.position.x -= 0.1;
+	// meshWireframe.position.y -= 0.01;
+	meshWireframe.position.z -= 0.00125; // Move the mesh
+	meshWireframe.position.x = 0;
+	meshWireframe.position.y -= 0.0008;
+
+	meshWireframe.add( new THREE.AxesHelper( 0.00007 ) );
+
+	scene.add(camera);
+
+	camera.add(meshWireframe);
 	
 	//camera.position.set(0, player.height, -5);
 	//camera.lookAt(new THREE.Vector3(0,player.height,0));
@@ -273,7 +298,6 @@ function init(callback){
 	var materialPonto = new THREE.PointsMaterial( { size : 10, sizeAttenuation : false } );
 
 	linha = new THREE.Line(geometriaLinha, materialLinha);
-	//scene.add(linha);
 
 	callback();
 
@@ -284,8 +308,8 @@ function animate(){
     
 	requestAnimationFrame( animate );
 
-	info.innerHTML = 'speed';
-	document.body.appendChild( info );
+	// SpaceShip Compass
+	meshWireframe.lookAt(earth.getWorldPosition());
 
 	//Movimento da x-wing
 	pa = linha.geometry.vertices[p];
@@ -305,43 +329,8 @@ function animate(){
 	//Movimento star destroyer
 	mesh[1].position.z -= 0.01;
 	//Fim movimento
-	//teste---------------------------------------------------------------------------
-	/*if(keyboard[87]){ // W key
-		mesh[3].position.x -= Math.sin(camera.rotation.y) * player.speed;
-		mesh[3].position.z -= -Math.cos(camera.rotation.y) * player.speed;
-	}
-	if(keyboard[83]){ // S key
-		mesh[3].position.x += Math.sin(camera.rotation.y) * player.speed;
-		mesh[3].position.z += -Math.cos(camera.rotation.y) * player.speed;
-	}
-	if(keyboard[65]){ // A key
-		mesh[3].position.x += Math.sin(camera.rotation.y + Math.PI/2) * player.speed;
-		mesh[3].position.z += -Math.cos(camera.rotation.y + Math.PI/2) * player.speed;
-	}
-	if(keyboard[68]){ // D key
-		mesh[3].position.x += Math.sin(camera.rotation.y - Math.PI/2) * player.speed;
-		mesh[3].position.z += -Math.cos(camera.rotation.y - Math.PI/2) * player.speed;
-	}
 	
-	if(keyboard[37]){ // left arrow key
-		mesh[3].rotation.z -= player.turnSpeed;
-	}
-	if(keyboard[39]){ // right arrow key
-		mesh[3].rotation.z += player.turnSpeed;
-	}
-
-	// position the gun in front of the camera
-	/*mesh[0].position.set(
-		camera.position.x - Math.sin(camera.rotation.y) * 0.3,
-		camera.position.y - Math.cos(camera.position.x + camera.position.z) * (0.001),
-		camera.position.z + Math.cos(camera.rotation.y) * 0.3
-	);
-	mesh[0].rotation.set(
-		camera.rotation.x + Math.PI,
-		camera.rotation.y - Math.PI,
-		camera.rotation.z //- Math.PI
-	);*/
-	//--------------------------------------------------------------------------------
+	// Movimento dos planetas
 	pivot.rotation.y += 0.0015;
 
 	earth.rotation.y += 0.001;
@@ -352,28 +341,69 @@ function animate(){
 	sun.rotation.x += 0.0001;
 
 	saturn.rotation.y += 0.001;
-	parentSaturn.rotation.y += 0.0001;
+	parentSaturn.rotation.y += 0.00001;
 
-	if(keyboard[32]){ // Space key
-		controls.update( 1 );
-	} else {
-		controls.update( 0.1 );
+	jupiter.rotation.y += 0.0001;
+	// Fim movimento dos planetas
+	
+	// Acelerando e freiando a nave do player
+	if(keyboard[16]){ // Shift key
+		if(controls.movementSpeed<50){
+			controls.movementSpeed += 0.1;
+			if(camera.fov < 100){
+				camera.fov += controls.movementSpeed*0.05;
+				camera.updateProjectionMatrix();
+			}
+		}
+		controls.autoForward = true;
 	}
 
-	
+	if(keyboard[32]){ // Space key
+		if(controls.movementSpeed>0.1){
+			controls.movementSpeed -= controls.movementSpeed*0.05;
+			camera.fov -= controls.movementSpeed*0.05;
+			camera.updateProjectionMatrix();
+		} else {
+			controls.movementSpeed = 0;
+			controls.autoForward = false;
+			camera.fov = 70;
+			camera.updateProjectionMatrix();
+		}
+	}
+
+	controls.update( 0.1 );
+
+	info.innerHTML = 'km/s ' + controls.movementSpeed;;
+	document.body.appendChild( info );
+
 	//Mover para cima para sensacao de movimento no cockpit
-	meshCockpit.position.set(
+	meshes["cockpit"].position.set(
 		camera.position.x,
 		camera.position.y,
 		camera.position.z
 	);
-	meshCockpit.rotation.set(
+	meshes["cockpit"].rotation.set(
 		camera.rotation.x,
 		camera.rotation.y,
 		camera.rotation.z
 	);
 
 	render.render( scene, camera );
+}
+
+// Runs when all resources are loaded
+function onResourcesLoaded(){
+	
+	// Clone models into meshes.
+	meshes["cockpit"] = models.cockpit.mesh.clone();
+
+	// Reposition individual meshes, then add meshes to scene
+	
+	// cockpit
+	meshes["cockpit"].scale.set(0.001,0.001,0.001);
+	scene.add(meshes["cockpit"]);
+
+	animate();
 }
 
 //funcao para carregamento de modelos 3D,
@@ -388,14 +418,6 @@ function loadResourceGltf(resource_url,cont, callback){
 		mesh[cont] = gltf.scene.children[0];
 		scene.add( mesh[cont] );
 		callback();
-
-		/*
-		gltf.animations; // Array<THREE.AnimationClip>
-		gltf.scene; // THREE.Scene
-		gltf.scenes; // Array<THREE.Scene>
-		gltf.cameras; // Array<THREE.Camera>
-		gltf.asset; // Object
-		*/
 	},
 	// called while loading is progressing
 	function ( xhr ) {console.log( ( xhr.loaded / xhr.total * 100 ) + '% loaded' );},
@@ -473,26 +495,69 @@ function loadResourceGltf(resource_url,cont, callback){
 	}
 	function loadSaturnAndRings(){
 	let saturnTexture = new THREE.TextureLoader().load( 'textures/2k_saturn.jpg', THREE.SphericalRefractionMapping );
-	let saturnRingTexture = new THREE.TextureLoader().load('textures/2k_saturn_rings.png');
+	let saturnRingTexture = new THREE.TextureLoader().load('textures/saturn-rings-top.png');
 	let saturnSpecularMap = new THREE.TextureLoader().load('textures/2k_saturn_normal_map.png', THREE.SphericalRefractionMapping);
 		// saturn geometry
 		saturnGeometry = new THREE.SphereGeometry( 70, 100, 100);
 		saturnMaterial = new THREE.MeshPhongMaterial( {	map: saturnTexture} );
 		saturn = new THREE.Mesh(saturnGeometry,saturnMaterial);
-		saturn.receiveShadow = true;
+		//saturn.receiveShadow = true;
 		saturn.castShadow = true;
 		saturn.position.set(saturnX,saturnY,saturnZ);
 		//scene.add(saturn);
 
-		saturnRingGeometry1 = new THREE.RingGeometry( 170, 95, 32 , 5, 0, Math.PI * 2);
-		saturnRingMaterial1 = new THREE.MeshBasicMaterial( { color: 0xffff00, side: THREE.DoubleSide } );
+		saturnRingGeometry1 = new THREE.RingGeometry( 95, 170, 32 , 5, 0, Math.PI * 2);
+		
+		let material = new THREE.ShaderMaterial({
+		    uniforms: {
+		      texture: { value: saturnRingTexture },
+		      innerRadius: { value: 95 },
+		      outerRadius: { value: 170 }
+		    },
+		    vertexShader: `
+		      varying vec3 vPos;
+		      
+		      void main() {
+		        vPos = position;
+		        vec3 viewPosition = (modelViewMatrix * vec4(position, 1.)).xyz;
+		        gl_Position = projectionMatrix * vec4(viewPosition, 1.);
+		      }
+		    `,
+		    fragmentShader: `
+		      uniform sampler2D texture;
+		      uniform float innerRadius;
+		      uniform float outerRadius;
+
+		      varying vec3 vPos;
+
+		      vec4 color() {
+		        vec2 uv = vec2(0);
+		        uv.x = (length(vPos) - innerRadius) / (outerRadius - innerRadius);
+		        if (uv.x < 0.0 || uv.x > 1.0) {
+		          discard;
+		        }
+		        
+		        vec4 pixel = texture2D(texture, uv);
+		        return pixel;
+		      }
+
+		      void main() {
+		        gl_FragColor = color();
+		      }
+		    `,
+		    transparent: true,
+		    side: THREE.DoubleSide
+		});
+
+		//saturnRingMaterial1 = new THREE.MeshBasicMaterial( { color: 0xffff00, side: THREE.DoubleSide } );
 		//saturnRingMaterial1 = new THREE.MeshBasicMaterial( { map: saturnRingTexture, transparent: true, side: THREE.DoubleSide } );
-		saturnRing1 = new THREE.Mesh( saturnRingGeometry1, saturnRingMaterial1 );
+		saturnRing1 = new THREE.Mesh( saturnRingGeometry1, material );
 		saturnRing1.position.set(saturnX,saturnY,saturnZ);
+		saturnRing1.receiveShadow = true;
 		saturnRing1.rotation.x  = 4.5;
 		saturnRing1.rotation.z  = 4.5;
 		//scene.add( saturnRing1 );
-
+		console.log('Saturn loaded');
 		// saturnRingGeometry2 = new THREE.RingGeometry( 90, 85, 32 );
 		// saturnRingMaterial2 = new THREE.MeshBasicMaterial( { color: 0xffff00, side: THREE.DoubleSide } );
 		// saturnRing2 = new THREE.Mesh( saturnRingGeometry2, saturnRingMaterial2 );
@@ -507,19 +572,11 @@ function loadResourceGltf(resource_url,cont, callback){
 		jupiterGeometry = new THREE.SphereGeometry( 100, 100, 100);
 		jupiterMaterial = new THREE.MeshPhongMaterial( {map: jupiterTexture} );
 		jupiter = new THREE.Mesh(jupiterGeometry,jupiterMaterial);
-		jupiter.receiveShadow = true;
+		//jupiter.receiveShadow = true;
 		jupiter.castShadow = true;
-		jupiter.position.set(600,20,0);
+		jupiter.position.set(1500,20,0);
 		scene.add(jupiter);
 	}
-	/*
-	function keyDown(event){
-	keyboard[event.keyCode] = true;
-	}
-
-	function keyUp(event){
-		keyboard[event.keyCode] = false;
-	}*/
 
 	function onMouseMove( e ) {
                 var x = e.pageX - (window.innerWidth/2),
@@ -624,18 +681,6 @@ function loadResourceGltf(resource_url,cont, callback){
                     controls.setDown( false );
                 }
             }
-
-	// geometry cube
-	// cubeGeometry = new THREE.BoxGeometry(1,1,1);
-	// cubeMaterial = new THREE.MeshLambertMaterial({color: 0x59fd8b});
-	// cube = new THREE.Mesh(cubeGeometry, cubeMaterial);
-	// cube.position.set(5,0,0);
-	// cube.castShadow = true;
-	// scene.add(cube); //Adicionamos cubo a cena
-
-	// cube.rotation.x += 0.01;
-	// cube.rotation.y += 0.01;
-	// cube.rotation.z += 0.01;
 
 function keyDown(event){
 	keyboard[event.keyCode] = true;
