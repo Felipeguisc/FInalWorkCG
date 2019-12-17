@@ -1,10 +1,8 @@
 //Declaracao de variaveis
-var scene,camera,render,canvas,controls,ambientLight,lightPoint,background;
+var scene,camera,render,canvas,controls,ambientLight,lightPoint,background,raycaster;
 var linha, x=0, spaceShipSpeed = 1;
 var meshWireframe;
-//var cockpit = new Cockpit('cockpit/cockpit5.png');
-//var backgroundTexture = new THREE.TextureLoader().load( 'textures/8k_stars.jpg', THREE.SphericalRefractionMapping );
-//variaveis cubo
+var cloudParticles = [];
 var cubeGeometry,cubeMaterial,cube;
 //variaveis terra
 var earthGeometry,earthMaterial,earth,clouds;
@@ -28,12 +26,29 @@ var pa, pa1;
 //Controls xSaucecode
 var keyboard = {};
 
+//Tela de carregamento
+var planeTexture = new THREE.TextureLoader().load( 'textures/TelaCarregamento.png' );
+var loadingScreen = {
+	scene: new THREE.Scene(),
+	camera: new THREE.PerspectiveCamera(90, 1980/1080, 0.1, 100),
+	box: new THREE.Mesh(
+		new THREE.BoxGeometry(0.5,0.5,0.5),
+		new THREE.MeshBasicMaterial({ color: 0xffff00 })
+	),
+	plane: new THREE.Mesh(
+	 		new THREE.PlaneGeometry( 10, 10, 32 ),
+			new THREE.MeshBasicMaterial( {map: planeTexture, side: THREE.DoubleSide} )
+			)
+};
+var loadingManager = null;
+var RESOURCES_LOADED = false;
+var RESOURCES_LOADED_GLTF = false;
+
 // instantiate a loader
 var loaderObj = new THREE.OBJLoader();
 var mtlLoader = new THREE.MTLLoader();
 var loader = new THREE.GLTFLoader();
 var loaderBox;
-var loadingManager = null;
 
 //Imports
 // 0 -> x-wing
@@ -49,7 +64,7 @@ var models = {
 		obj:"cockpit/CockpitPro/vrcockpit.obj",
 		mtl:"cockpit/CockpitPro/vrcockpit.mtl",
 		mesh: null,
-		castShadow:false
+		castShadow:true
 	}
 };
 
@@ -68,22 +83,25 @@ loadResourceGltf('3DModels/x-wing/scene.gltf',0, function() {
 		      mesh[2].scale.setScalar(0.04,0.04,0.04);
 
 		      //posicionamento
-		      mesh[0].position.set(-10,0,0);
-		      mesh[1].position.set(15,-10,5);
-		      mesh[2].position.set(20,-30,-10);
-		      mesh[3].position.set(20,30,10);
-		      //controls = new THREE.FlyControls( mesh[3] );
+		      mesh[0].position.set(-10,0,200);
+		      mesh[1].position.set(15,-10,200);
+		      mesh[2].position.set(20,-30,160);
+		      mesh[3].position.set(20,30,160);
+		      
+		      RESOURCES_LOADED_GLTF = true;
 		 
     	});
     });
   });
 });
 
+
+
 //inicializacao das funcoes
 init(function(){
 	window.addEventListener('keydown', keyDown);
 	window.addEventListener('keyup', keyUp);
-	//animate();
+	animate();
 });
 
 //funcao init
@@ -100,7 +118,7 @@ function init(callback){
 	info.style.backgroundColor = 'transparent';
 	info.style.zIndex = '1';
 	info.style.fontFamily = 'Monospace';
-	info.innerHTML = 'WASD move, R|F up | down, Q|E roll, up|down pitch, left|right yaw';
+	info.innerHTML = 'Shift acelerar Q|E rolar, up|down pitch, left|right virar<br> Aproxime-se da Terra';
 	document.body.appendChild( info );
 
 	// info
@@ -126,9 +144,13 @@ function init(callback){
 	// scene
 	scene = new THREE.Scene();
 	scene.add( new THREE.AxesHelper( 50 ) );
-	//var grid = new THREE.GridHelper(2000, 100, 0x666666, 0x444444)
-	//grid.rotateY(Math.PI/2);
-	//scene.add(grid);
+	
+	loadingScreen.box.position.set(0,0,5);
+	loadingScreen.camera.lookAt(loadingScreen.box.position);
+	loadingScreen.scene.add(loadingScreen.box);
+	loadingScreen.plane.position.set(0,0,5);
+	loadingScreen.plane.rotation.y = Math.PI;
+	loadingScreen.scene.add(loadingScreen.plane);
 
 	// Loading Manager
 	loadingManager = new THREE.LoadingManager();
@@ -137,6 +159,7 @@ function init(callback){
 	};
 	loadingManager.onLoad = function(){
 		console.log("loaded all resources");
+		RESOURCES_LOADED = true;
 		onResourcesLoaded();
 	};
 
@@ -178,6 +201,8 @@ function init(callback){
 	//Carregar Jupiter
 	loadJupiter();
 
+	//Carrega Nebula
+	loadParticles();
 	// Background
 	loaderBox = new THREE.CubeTextureLoader();
   	let textureBack = loaderBox.load([
@@ -189,7 +214,10 @@ function init(callback){
     'textures/background/ame_starfield/starfield_lf.png'
  	 ]);
   	scene.background = textureBack;
-
+  	//Flash
+	flash = new THREE.PointLight(0x062d89, 30, 500, 1.7);
+	flash.position.set(200, 300, 100);
+	scene.add(flash);
 	// Load models
 	// REMEMBER: Loading in Javascript is asynchronous, so you need
 	// to wrap the code in a function and pass it the index. If you
@@ -252,16 +280,13 @@ function init(callback){
 	lightPoint.distance = 0;
 	scene.add(lightPoint);
 
-	camera.position.z = 30;
+	camera.position.z = 200;
 
 	//teste 0.01
 	meshWireframe = new THREE.Mesh(
 		new THREE.SphereGeometry(0.00015,10,10),
 		new THREE.MeshBasicMaterial({color:0x42b6f5, wireframe:true, transparent:true, opacity: 0.2})
 	);
-	// meshWireframe.position.z -= 0.15; // Move the mesh
-	// meshWireframe.position.x -= 0.1;
-	// meshWireframe.position.y -= 0.01;
 	meshWireframe.position.z -= 0.00125; // Move the mesh
 	meshWireframe.position.x = 0;
 	meshWireframe.position.y -= 0.0008;
@@ -271,12 +296,6 @@ function init(callback){
 	scene.add(camera);
 
 	camera.add(meshWireframe);
-	
-	//camera.position.set(0, player.height, -5);
-	//camera.lookAt(new THREE.Vector3(0,player.height,0));
-
-	//MELHOR MODELO PARA CAMERA, ACOMPANHA OBJETO
-	//camera.position.set( 0, 20, 5 );
 
 	//caminho para nave
 	curva = new THREE.SplineCurve( [ 
@@ -305,8 +324,34 @@ function init(callback){
 
 //funcao animate
 function animate(){
+
+	// Play the loading screen until resources are loaded.
+	if( RESOURCES_LOADED == false || RESOURCES_LOADED_GLTF == false ){
+		requestAnimationFrame(animate);
+		
+		loadingScreen.box.position.x -= 0.05;
+		if( loadingScreen.box.position.x < -10 ) loadingScreen.box.position.x = 10;
+		loadingScreen.box.position.y = Math.sin(loadingScreen.box.position.x);
+		
+		render.render(loadingScreen.scene, loadingScreen.camera);
+		return;
+	}
     
 	requestAnimationFrame( animate );
+
+	cloudParticles.forEach(p => {
+    	p.rotation.z -= 0.004;
+	});
+
+	if (Math.random() > 0.93 || flash.power > 100) {
+	    if (flash.power < 100)
+	        flash.position.set(
+	            Math.random() * 800 - 400,
+	            camera.position.y,
+	            Math.random() * 500 - 900
+	        );
+	    flash.power = 50 + Math.random() * 500;
+	}
 
 	// SpaceShip Compass
 	meshWireframe.lookAt(earth.getWorldPosition());
@@ -351,7 +396,7 @@ function animate(){
 		if(controls.movementSpeed<50){
 			controls.movementSpeed += 0.1;
 			if(camera.fov < 100){
-				camera.fov += controls.movementSpeed*0.05;
+				camera.fov += controls.movementSpeed*0.02;
 				camera.updateProjectionMatrix();
 			}
 		}
@@ -361,7 +406,7 @@ function animate(){
 	if(keyboard[32]){ // Space key
 		if(controls.movementSpeed>0.1){
 			controls.movementSpeed -= controls.movementSpeed*0.05;
-			camera.fov -= controls.movementSpeed*0.05;
+			camera.fov -= controls.movementSpeed*0.04;
 			camera.updateProjectionMatrix();
 		} else {
 			controls.movementSpeed = 0;
@@ -388,6 +433,12 @@ function animate(){
 		camera.rotation.z
 	);
 
+	var distance = camera.getWorldPosition().distanceTo( earth.getWorldPosition() );
+
+	if(distance<20){
+		window.location = "PlaneFPS/index.html";
+	}
+
 	render.render( scene, camera );
 }
 
@@ -402,8 +453,6 @@ function onResourcesLoaded(){
 	// cockpit
 	meshes["cockpit"].scale.set(0.001,0.001,0.001);
 	scene.add(meshes["cockpit"]);
-
-	animate();
 }
 
 //funcao para carregamento de modelos 3D,
@@ -424,6 +473,44 @@ function loadResourceGltf(resource_url,cont, callback){
 	// called when loading has errors
 	function ( error ) {console.log( 'An error happened' );}
 );
+}
+
+function loadParticles() {
+
+
+	let loader = new THREE.TextureLoader();
+	loader.load("textures/smoke-1.png", function (texture) {
+		//texture is loaded
+		//cloudGeo = new THREE.PlaneGeometry( 500, 500, 300 );
+		//cloudGeo = new THREE.BoxBufferGeometry( 500, 500, 500 );
+		cloudGeo = new THREE.PlaneBufferGeometry(500, 500, 32);
+		cloudMaterial = new THREE.MeshStandardMaterial({
+			map: texture,
+			transparent: true
+		});
+
+		for (let p = 0; p < 50; p++) {
+			let cloud = new THREE.Mesh(cloudGeo, cloudMaterial);
+			cloud.position.set(
+				Math.random() * 800 - 400,
+				camera.position.y,
+				Math.random() * 500 - 900
+			);
+
+			cloud.rotation.x = 1.16;
+			cloud.rotation.y = -0.12;
+			cloud.rotation.z = Math.random() * 2 * Math.PI;
+			cloud.material.opacity = 0.55;
+			cloudParticles.push(cloud);
+			scene.add(cloud);
+
+		}
+
+		// // let directionalLight = new THREE.DirectionalLight(0xff8c19);
+		// // directionalLight.position.set(cloud.position.x, cloud.position.y, 1);
+		// // scene.add(directionalLight);
+
+	});
 }
 
 
@@ -549,22 +636,14 @@ function loadResourceGltf(resource_url,cont, callback){
 		    side: THREE.DoubleSide
 		});
 
-		//saturnRingMaterial1 = new THREE.MeshBasicMaterial( { color: 0xffff00, side: THREE.DoubleSide } );
-		//saturnRingMaterial1 = new THREE.MeshBasicMaterial( { map: saturnRingTexture, transparent: true, side: THREE.DoubleSide } );
 		saturnRing1 = new THREE.Mesh( saturnRingGeometry1, material );
 		saturnRing1.position.set(saturnX,saturnY,saturnZ);
 		saturnRing1.receiveShadow = true;
 		saturnRing1.rotation.x  = 4.5;
 		saturnRing1.rotation.z  = 4.5;
-		//scene.add( saturnRing1 );
+
 		console.log('Saturn loaded');
-		// saturnRingGeometry2 = new THREE.RingGeometry( 90, 85, 32 );
-		// saturnRingMaterial2 = new THREE.MeshBasicMaterial( { color: 0xffff00, side: THREE.DoubleSide } );
-		// saturnRing2 = new THREE.Mesh( saturnRingGeometry2, saturnRingMaterial2 );
-		// saturnRing2.position.set(saturnX,saturnY,saturnZ);
-		// saturnRing2.rotation.x  = 4.5;
-		// saturnRing2.rotation.z  = 4.5;
-		//scene.add( saturnRing2 );
+
 	}
 	function loadJupiter(){
 	let jupiterTexture = new THREE.TextureLoader().load( 'textures/8k_jupiter.jpg' , THREE.SphericalRefractionMapping );
@@ -572,7 +651,6 @@ function loadResourceGltf(resource_url,cont, callback){
 		jupiterGeometry = new THREE.SphereGeometry( 100, 100, 100);
 		jupiterMaterial = new THREE.MeshPhongMaterial( {map: jupiterTexture} );
 		jupiter = new THREE.Mesh(jupiterGeometry,jupiterMaterial);
-		//jupiter.receiveShadow = true;
 		jupiter.castShadow = true;
 		jupiter.position.set(1500,20,0);
 		scene.add(jupiter);

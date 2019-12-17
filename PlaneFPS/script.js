@@ -23,7 +23,6 @@ var loadingScreen = {
 };
 var loadingManager = null;
 var RESOURCES_LOADED = false;
-var selectShotgun = false;
 
 // Models index
 var models = {
@@ -70,7 +69,7 @@ function init(callback){
 	info.style.backgroundColor = 'transparent';
 	info.style.zIndex = '1';
 	info.style.fontFamily = 'Monospace';
-	info.innerHTML = 'WASD move, left|right camera';
+	info.innerHTML = 'WASD mover, left|right camera, Espaco atirar, N entrar na nave<br>1 Pistola 2 Shotgun';
 	document.body.appendChild( info );
 
 	// scene
@@ -346,12 +345,23 @@ function animate(){
 	if(player.canShoot > 0) player.canShoot -= 1;
 
 	// position the gun in front of the camera
-	if(keyboard[16]){ // Shift key
+	if(keyboard[49]){ // Shift key
+		scene.remove(meshes["playerweapon"]);
+		meshes["playerweapon"] = models.pistol.mesh.clone();
+		meshes["playerweapon"].scale.set(14,10,12);
+		scene.add(meshes["playerweapon"]);
+	}
+	if(keyboard[50]){ // Shift key
+		scene.remove(meshes["playerweapon"]);
 		meshes["playerweapon"] = models.shotgun.mesh.clone();
 		meshes["playerweapon"].scale.set(14,10,12);
 		scene.add(meshes["playerweapon"]);
 	}
 
+	if(keyboard[78]){ // N key
+		window.location = "./../index.html";
+	}
+	
 	meshes["playerweapon"].position.set(
 		camera.position.x - Math.sin(camera.rotation.y + Math.PI/6) * 0.75,
 		camera.position.y - 0.5 + Math.sin(time*4 + camera.position.x + camera.position.z)*0.01,
